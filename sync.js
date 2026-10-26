@@ -55,7 +55,7 @@ window.goalSync = {
 
 function friendly(error) {
   const code = error?.code || '';
-  return ({
+  const message = ({
     'auth/invalid-email': '이메일 주소를 확인해 주세요.',
     'auth/invalid-credential': '이메일 또는 비밀번호가 올바르지 않습니다.',
     'auth/wrong-password': '이메일 또는 비밀번호가 올바르지 않습니다.',
@@ -67,10 +67,19 @@ function friendly(error) {
     'auth/network-request-failed': '인터넷 연결을 확인하고 다시 시도해 주세요.',
     'auth/operation-not-allowed': '이메일 로그인이 아직 활성화되지 않았습니다.',
     'auth/unauthorized-domain': '이 웹주소의 로그인이 아직 허용되지 않았습니다.',
+    'auth/invalid-api-key': 'Firebase 연결 키가 올바르지 않습니다. 프로젝트의 웹 앱 설정값을 다시 확인해 주세요.',
+    'auth/api-key-not-valid.-please-pass-a-valid-api-key.': 'Firebase 연결 키가 올바르지 않습니다. 프로젝트의 웹 앱 설정값을 다시 확인해 주세요.',
+    'auth/app-not-authorized': '현재 웹 앱에서 이 Firebase 연결 키를 사용할 수 없습니다. 프로젝트의 웹 앱 설정을 확인해 주세요.',
+    'auth/configuration-not-found': 'Firebase 로그인 설정을 찾을 수 없습니다. Authentication 설정을 확인해 주세요.',
+    'auth/admin-restricted-operation': '현재 프로젝트에서 회원가입이 제한되어 있습니다. Authentication 설정을 확인해 주세요.',
+    'auth/requests-from-referer-<empty>-are-blocked.': '현재 접속 주소에서 로그인이 허용되지 않습니다. 배포된 웹주소로 접속해 주세요.',
     'permission-denied': '동기화 권한이 없습니다. 데이터베이스 보안 규칙을 확인해 주세요.',
     'unavailable': '서버에 연결할 수 없습니다. 연결 후 다시 시도해 주세요.',
     'resource-exhausted': '동기화 사용량 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.'
   })[code] || '처리하지 못했습니다. 연결과 계정 설정을 확인하고 다시 시도해 주세요.';
+  // Display only the SDK error identifier, never raw responses or credentials.
+  const identifier = /^(?:auth\/)?[a-z0-9._-]{1,160}$/i.test(code) ? code : '';
+  return message + (identifier ? `\n오류 코드: ${identifier}` : '');
 }
 
 function startListener(token) {
@@ -176,11 +185,11 @@ async function authenticate(mode) {
     } else {
       if (mode === 'signup') await authAPI.createUserWithEmailAndPassword(auth, email, password);
       else await authAPI.signInWithEmailAndPassword(auth, email, password);
+      passwordInput.value = '';
       $('authDialog').close();
     }
   } catch (error) { $('authMessage').textContent = friendly(error); }
   finally {
-    passwordInput.value = '';
     authBusy = false;
     for (const id of ['signInButton', 'signUpButton', 'resetPasswordButton']) $(id).disabled = false;
   }
