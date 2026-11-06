@@ -1,4 +1,4 @@
-const CACHE = 'goal-app-v6';
+const CACHE = 'goal-app-v7';
 const ASSETS = ['./', './index.html', './app.js', './sync-core.js', './sync.js',
   './firebase-config.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', event => event.waitUntil(
