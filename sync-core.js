@@ -4,6 +4,7 @@
   const copy = value => JSON.parse(JSON.stringify(value));
   function toRemote(goal) {
     return {name: goal.name, count: goal.count, start: goal.start, end: goal.end,
+      targetQuantity: goal.targetQuantity || null, quantities: Object.fromEntries(goal.dates.map((_, i) => [String(i), goal.quantities?.[i] || 0])),
       dates: Object.fromEntries(goal.dates.map((date, i) => [String(i), date || null])), deleted: false};
   }
   function toGoal(id, data) {
@@ -11,6 +12,8 @@
         !Number.isInteger(data.count) || data.count < 1 || data.count > 10000 ||
         !/^\d{4}-\d{2}-\d{2}$/.test(data.start) || !/^\d{4}-\d{2}-\d{2}$/.test(data.end)) return null;
     return {id, name: data.name, count: data.count, start: data.start, end: data.end,
+      targetQuantity: Number.isSafeInteger(data.targetQuantity) && data.targetQuantity > 0 && data.targetQuantity <= 1000000000 ? data.targetQuantity : null,
+      quantities: Array.from({length:data.count},(_,i)=>Number.isSafeInteger(data.quantities?.[i]) && data.quantities[i]>=0 && data.quantities[i]<=1000000000 ? data.quantities[i] : 0),
       dates: Array.from({length: data.count}, (_, i) => {
         const value = data.dates?.[i];
         return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
@@ -24,13 +27,16 @@
       const old = before.get(goal.id);
       if (!old) { operations.push({id: goal.id, patch: toRemote(goal)}); continue; }
       const patch = {};
-      for (const key of ['name', 'count', 'start', 'end']) if (old[key] !== goal[key]) patch[key] = goal[key];
-      const dates = {};
+      for (const key of ['name', 'count', 'start', 'end', 'targetQuantity']) if ((old[key] ?? null) !== (goal[key] ?? null)) patch[key] = goal[key] ?? null;
+      const dates = {}, quantities = {};
       // Explicit nulls clear truncated records and prevent them reappearing if count grows.
       for (let i = 0; i < Math.max(old.count, goal.count); i++) {
         const a = old.dates[i] || null, b = goal.dates[i] || null;
         if (a !== b) dates[i] = b;
+        const qa=old.quantities?.[i] || 0, qb=goal.quantities?.[i] || 0;
+        if(qa!==qb) quantities[i]=qb;
       }
+      if (Object.keys(quantities).length) patch.quantities = quantities;
       if (Object.keys(dates).length) patch.dates = dates;
       if (Object.keys(patch).length) operations.push({id: goal.id, patch});
     }
@@ -41,7 +47,7 @@
     const result = new Map([...remote].map(([id, data]) => [id, copy(data)]));
     for (const {id, patch} of pending) {
       const old = result.get(id) || {};
-      result.set(id, {...old, ...copy(patch), dates: {...old.dates, ...patch.dates}});
+      result.set(id, {...old, ...copy(patch), dates: {...old.dates, ...patch.dates}, quantities: {...old.quantities, ...patch.quantities}});
     }
     return [...result].map(([id, data]) => toGoal(id, data)).filter(Boolean);
   }
@@ -49,3 +55,4 @@
   if (typeof module !== 'undefined') module.exports = api;
   else root.GoalSyncCore = api;
 })(globalThis);
+

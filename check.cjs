@@ -1,0 +1,30 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const metrics=require('./metrics.js'),core=require('./sync-core.js');
+const old={id:'one',name:'운동',count:100,start:'2026-01-01',end:'2026-05-31',dates:Array(100).fill(null)};
+for(let i=0;i<5;i++)old.dates[i]=`2026-01-0${i+1}`;
+assert.equal(metrics.stats(old,'2026-02-20').total,0);
+const goal={...old,targetQuantity:300,quantities:Array(100).fill(0)};
+goal.quantities[0]=100;goal.quantities[1]=50;
+assert.deepEqual(metrics.stats(goal,'2026-02-20'),{totalDays:150,elapsed:50,completed:5,total:150,periodPercent:33.3,datePercent:5,quantityPercent:50});
+assert.equal(metrics.cumulative(goal,0),100);assert.equal(metrics.cumulative(goal,1),150);
+const reordered={...goal,dates:[...goal.dates]};reordered.dates[0]='2026-01-10';assert.equal(metrics.cumulative(reordered,1),50);
+const remote=core.toRemote(goal);assert.deepEqual(core.toGoal('one',remote),goal);
+const changed=structuredClone(goal);changed.quantities[1]=55;changed.targetQuantity=400;
+const ops=core.diff([goal],[changed]);assert.deepEqual(ops[0].patch,{targetQuantity:400,quantities:{1:55}});
+assert.deepEqual(core.overlay(new Map([['one',remote]]),ops),[changed]);
+const other=structuredClone(goal);other.quantities[2]=6;
+const combined=core.overlay(new Map([['one',core.toRemote(other)]]),ops)[0];assert.equal(combined.quantities[2],6);assert.equal(combined.quantities[1],55);
+const legacy=core.toGoal('one',{...remote,quantities:undefined,targetQuantity:undefined});assert.equal(legacy.quantities[0],0);assert.equal(legacy.dates[0],old.dates[0]);
+const cleared=structuredClone(goal);cleared.dates[0]=null;cleared.quantities[0]=0;assert.equal(core.overlay(new Map([['one',remote]]),core.diff([goal],[cleared]))[0].quantities[0],0);
+// Exercise actual UI handlers without making any network or account writes.
+class Element{constructor(){this.value='';this.children=[];this.style={};this.open=false;this.classList={contains:()=>false}}replaceChildren(){this.children=[]}appendChild(c){this.children.push(c)}addEventListener(){}setAttribute(){}showModal(){this.open=true}close(){this.open=false}reset(){}setCustomValidity(){}reportValidity(){return true}}
+const elements=new Map(),get=id=>{if(!elements.has(id))elements.set(id,new Element);return elements.get(id)};
+let saved;
+const context={console,Date,Math,Number,String,Array,Set,Map,JSON,RegExp,crypto:{randomUUID:()=> 'new'},document:{getElementById:get,createElement:()=>new Element,querySelectorAll:()=>[]},localStorage:{getItem:()=>JSON.stringify([goal]),setItem:(k,v)=>{saved=JSON.parse(v)}},window:{},navigator:{},location:{protocol:'file:'},GoalMetrics:metrics,alert:m=>{throw Error(m)},confirm:()=>true,setTimeout,clearTimeout};
+vm.createContext(context);vm.runInContext(fs.readFileSync(__dirname+'/app.js','utf8'),context);
+context.showDetail('one');assert.equal(get('cells').children.length,100);assert.match(get('detailInfo').textContent,/150\/300건/);
+context.openQuantity('one',1);get('quantityDate').value='2026-01-02';get('quantityValue').value='60';get('quantityForm').onsubmit({preventDefault(){}});assert.equal(saved[0].quantities[1],60);assert.equal(metrics.stats(saved[0],'2026-02-20').total,160);
+context.openCompletionDate('one',1);get('completionDate').value='2026-01-08';get('completionDateForm').onsubmit({preventDefault(){}});assert.equal(saved[0].dates[1],'2026-01-08');assert.equal(saved[0].quantities[1],60);
+context.editCurrent();assert.equal(get('targetQuantity').value,300);get('name').value='운동';get('count').value='100';get('targetQuantity').value='500';get('start').value=goal.start;get('end').value=goal.end;get('goalForm').onsubmit({preventDefault(){}});assert.equal(saved[0].targetQuantity,500);assert.equal(saved[0].quantities[1],60);
+context.showDetail('one');get('cells').children[1].children[0].onclick({preventDefault(){}});assert.equal(saved[0].dates[1],null);assert.equal(saved[0].quantities[1],0);
+console.log('PASS: period/days/quantity, cumulative date order, legacy records, cloud roundtrip/merge/clear, UI quantity/date/goal editing and cancellation');

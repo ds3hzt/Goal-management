@@ -122,8 +122,8 @@ async function flush() {
       const operation = core.copy(state.pending[0]);
       const reference = storeAPI.doc(db, 'users', uid, 'goals', operation.id);
       // mergeFields prevents an empty dates map from replacing existing repetitions.
-      const fields = Object.keys(operation.patch).filter(key => key !== 'dates');
-      for (const key of Object.keys(operation.patch.dates || {})) fields.push(new storeAPI.FieldPath('dates', key));
+      const fields = Object.keys(operation.patch).filter(key => !['dates','quantities'].includes(key));
+      for (const map of ['dates','quantities']) for (const key of Object.keys(operation.patch[map] || {})) fields.push(new storeAPI.FieldPath(map, key));
       await storeAPI.setDoc(reference, operation.patch, {mergeFields: fields});
       if (token !== epoch) return;
       state.pending.shift();
@@ -254,3 +254,4 @@ async function boot() {
   }
 }
 void boot();
+
