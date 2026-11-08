@@ -1,8 +1,9 @@
-const KEY='goal-management-v1';let goals=[];try{goals=JSON.parse(localStorage.getItem(KEY)||'[]')}catch{}let editing=null,current=null,dateEditing=null;const $=id=>document.getElementById(id);const today=()=>{let d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};const fmt=s=>s.replaceAll('-','.');const save=()=>{if(window.goalSync)window.goalSync.save(goals);else localStorage.setItem(KEY,JSON.stringify(goals));render()};function metric(label,n,d,unit,percent,cls=''){
+const KEY='goal-management-v1';let goals=[];try{goals=JSON.parse(localStorage.getItem(KEY)||'[]')}catch{}let editing=null,current=null,dateEditing=null;let loading=true;const $=id=>document.getElementById(id);const today=()=>{let d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};const fmt=s=>s.replaceAll('-','.');const save=()=>{if(window.goalSync)window.goalSync.save(goals);else localStorage.setItem(KEY,JSON.stringify(goals));render()};function metric(label,n,d,unit,percent,cls=''){
   const number=Number.isFinite(percent)?percent:0;
   return `<div class="metric-line"><span class="metric-label">${label} <b>${n}/${d}${unit} · ${number}%</b></span><div class="bar"><div class="fill ${cls}" style="width:${Math.min(100,Math.max(0,number))}%"></div></div></div>`;
 }
 function render(){
+  if(loading){$('rows').replaceChildren();$('empty').hidden=true;return;}
   const body=$('rows');body.replaceChildren();$('empty').hidden=goals.length!==0;
   goals.forEach(g=>{
     const stats=GoalMetrics.stats(g,today()),tr=document.createElement('tr');
@@ -88,6 +89,7 @@ $('completionDateForm').onsubmit=e=>{
 };
 function editCurrent(){if(!canEdit())return;let g=goals.find(x=>x.id===current);if(!g)return;editing=g.id;$('formTitle').textContent='목표 수정';$('name').value=g.name;$('count').value=g.count;$('targetQuantity').value=g.targetQuantity||'';$('start').value=g.start;$('end').value=g.end;syncDaysAfter();$('detailDialog').close();$('editDialog').showModal()}function removeCurrent(){if(!canEdit())return;if(!confirm('이 목표와 완료 기록을 모두 삭제하시겠습니까?'))return;goals=goals.filter(x=>x.id!==current);save();$('detailDialog').close()}render();if('serviceWorker'in navigator && location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
 function canEdit(){
+  if(loading){alert('기록을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');return false;}
   if(window.goalSync && !window.goalSync.canEdit()){
     alert('계정 기록을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');return false;
   }
@@ -95,6 +97,11 @@ function canEdit(){
 }
 window.GoalApp={
   getGoals:()=>goals,
+  setLoading(value){
+    loading=!!value;
+    $('dataLoading').hidden=!loading;
+    if(loading){$('dataLoading').textContent=typeof value==='string'?value:'기록 불러오는 중…';render();}
+  },
   setGoals(next){
     goals=next;render();
     if($('detailDialog').open){

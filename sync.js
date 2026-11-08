@@ -28,6 +28,7 @@ function updateStatus() {
 }
 function display(goals) {
   lastView = core.copy(goals);
+  app.setLoading(false);
   app.setGoals(goals);
 }
 function importButton() {
@@ -108,6 +109,8 @@ function startListener(token) {
       if (token !== epoch) return;
       listening = false;
       syncError = friendly(error);
+      if(!serverConfirmed && state.goals.length){ready=true;display(core.copy(state.goals));}
+      else if(!serverConfirmed) app.setLoading('계정 기록을 불러오지 못했습니다. 동기화 다시 시도를 눌러 주세요.');
       updateStatus();
     });
 }
@@ -161,9 +164,10 @@ function switchAccount(nextUser) {
   catch { state = null; }
   const cached = state && Array.isArray(state.goals) && Array.isArray(state.pending);
   if (!cached) state = {goals: [], pending: [], imported: false};
-  ready = !!cached;
+  ready = !!cached && !navigator.onLine;
   remote = new Map(state.goals.map(goal => [goal.id, core.toRemote(goal)]));
-  display(core.copy(state.goals));
+  if(!navigator.onLine && cached) display(core.copy(state.goals));
+  else app.setLoading(navigator.onLine?'계정의 최신 기록 불러오는 중…':'인터넷 연결 후 계정 기록을 불러올 수 있습니다.');
   importButton();
   updateStatus();
   startListener(token);
@@ -234,6 +238,7 @@ window.addEventListener('offline', updateStatus);
 
 async function boot() {
   if (!configured) {
+    display(readGuest());
     status('이 기기에 저장 중 · 이메일 로그인 연결 준비 중');
     return;
   }
@@ -247,10 +252,11 @@ async function boot() {
     auth = authAPI.getAuth(firebase);
     db = storeAPI.getFirestore(firebase);
     await authAPI.setPersistence(auth, authAPI.browserLocalPersistence);
-    authAPI.onAuthStateChanged(auth, switchAccount, error => { ready = true; status(friendly(error)); });
+    authAPI.onAuthStateChanged(auth, switchAccount, error => { ready = false; app.setLoading('로그인 상태를 확인하지 못했습니다. 새로고침해 주세요.'); status(friendly(error)); });
   } catch (error) {
-    ready = true;
-    status('로그인 서버에 연결하지 못했습니다. 기기 기록은 사용할 수 있습니다. 인터넷 연결 후 새로고침해 주세요.');
+    ready = false;
+    app.setLoading('로그인 상태를 확인하지 못했습니다. 새로고침해 주세요.');
+    status('로그인 서버에 연결하지 못했습니다. 저장된 기록은 유지됩니다. 인터넷 연결 후 새로고침해 주세요.');
   }
 }
 void boot();
