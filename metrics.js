@@ -7,14 +7,19 @@
   function stats(g,today){
     const totalDays=Math.max(0,day(g.end)-day(g.start));
     const elapsed=Math.max(0,Math.min(totalDays,day(today)-day(g.start)));
-    const completed=new Set(g.dates.filter(Boolean)).size;
+    const completed=g.dates.filter(Boolean).length;
     const total=g.dates.reduce((sum,_,i)=>sum+quantity(g,i),0);
     return {totalDays,elapsed,completed,total,periodPercent:totalDays?ratio(elapsed,totalDays):(today>=g.start?100:0),datePercent:ratio(completed,g.count),quantityPercent:ratio(total,g.targetQuantity)};
   }
-  function cumulative(g,index){const date=g.dates[index];return date?g.dates.reduce((sum,d,i)=>sum+(d&&d<=date?quantity(g,i):0),0):0;}
-  function previousTotal(goal, date) {
-    return goal.dates.reduce((sum, recorded, index) =>
-      sum + (recorded && recorded < date ? quantity(goal, index) : 0), 0);
+  function previousTotal(goal, date, slot) {
+    return goal.dates.reduce((sum, recorded, index) => {
+      const comesBefore = recorded && (recorded < date || (recorded === date && index < slot));
+      return sum + (index !== slot && comesBefore ? quantity(goal, index) : 0);
+    }, 0);
+  }
+  function cumulative(goal, index) {
+    const date = goal.dates[index];
+    return date ? previousTotal(goal, date, index) + quantity(goal, index) : 0;
   }
   const api={validQuantity,quantity,ratio,stats,cumulative,previousTotal};
   if(typeof module!=='undefined')module.exports=api;else root.GoalMetrics=api;

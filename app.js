@@ -10,8 +10,8 @@ function render(){
     const targets = [];
     const progress = [metric('기간', stats.elapsed, stats.totalDays, '일', stats.periodPercent)];
     if (g.trackDates !== false) {
-      targets.push(g.count + '일');
-      progress.push(metric('진행(날짜)', stats.completed, g.count, '일', stats.datePercent, 'done'));
+      targets.push(g.count + '회');
+      progress.push(metric('진행(횟수)', stats.completed, g.count, '회', stats.datePercent, 'done'));
     }
     if (g.trackQuantity !== false) {
       targets.push(g.targetQuantity ? g.targetQuantity + '건' : '건수 미설정');
@@ -66,7 +66,7 @@ $('goalForm').onsubmit = e => {
     return;
   }
   if (existing && count < existing.count && existing.dates.slice(count).some(Boolean)) {
-    alert('기록이 있는 실행 일수보다 목표 일수를 작게 줄일 수 없습니다.');
+    alert('기록이 남아 있는 칸보다 목표 횟수를 줄일 수 없습니다.');
     return;
   }
   const length = Math.max(count, (existing?.dates.findLastIndex(Boolean) ?? -1) + 1);
@@ -87,14 +87,14 @@ function showDetail(id) {
   const trackQuantity = g.trackQuantity !== false;
   const stats = GoalMetrics.stats(g, today());
   const info = [`${fmt(g.start)} ~ ${fmt(g.end)}`];
-  if (trackDates) info.push(`실행 ${stats.completed}/${g.count}일`);
+  if (trackDates) info.push(`실행 ${stats.completed}/${g.count}회`);
   if (trackQuantity) info.push(`누적 ${stats.total}${g.targetQuantity ? '/' + g.targetQuantity : ''}건`);
   $('detailTitle').textContent = g.name;
   $('detailInfo').textContent = info.join(' · ');
   $('detailHint').textContent = trackDates
-    ? '날짜를 눌러 실행을 체크하세요. 완료 날짜를 길게 누르면 날짜를 수정할 수 있습니다.'
+    ? '실행 칸을 눌러 체크하세요. 같은 날에도 여러 번 기록할 수 있습니다. 완료 날짜를 길게 누르면 날짜를 수정할 수 있습니다.'
     : trackQuantity ? '건수 기록에는 날짜가 함께 저장됩니다.' : '';
-  $('addQuantity').hidden = trackDates || !trackQuantity;
+  $('addQuantity').hidden = !trackQuantity;
   const box = $('cells');
   box.replaceChildren();
   const entries = g.dates.map((date, index) => ({date, index}));
@@ -107,8 +107,8 @@ function showDetail(id) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'cell' + (date ? ' checked' : '');
-      button.textContent = date ? `${index + 1}일차 완료
-${fmt(date)}` : `${index + 1}일차
+      button.textContent = date ? `${index + 1}회차 완료
+${fmt(date)}` : `${index + 1}회차
 실행 체크`;
       button.style.whiteSpace = 'pre-line';
       bindDateLongPress(button, id, index);
@@ -124,10 +124,6 @@ ${fmt(date)}` : `${index + 1}일차
           g.dates[index] = null;
           if (g.quantities) g.quantities[index] = 0;
         } else {
-          if (g.dates.includes(today())) {
-            alert('오늘 실행은 이미 체크되어 있습니다.');
-            return;
-          }
           g.dates[index] = today();
         }
         save();
@@ -139,7 +135,7 @@ ${fmt(date)}` : `${index + 1}일차
       const counts = document.createElement('div');
       counts.className = 'cell-counts';
       const label = !trackDates && date ? fmt(date) + ' · ' : '';
-      counts.textContent = `${label}당일 ${GoalMetrics.quantity(g, index)}건 · 누적 ${GoalMetrics.cumulative(g, index)}건`;
+      counts.textContent = `${label}이번 ${GoalMetrics.quantity(g, index)}건 · 누적 ${GoalMetrics.cumulative(g, index)}건`;
       card.appendChild(counts);
       const button = document.createElement('button');
       button.type = 'button';
@@ -154,12 +150,7 @@ ${fmt(date)}` : `${index + 1}일차
 }
 
 let quantityEditing = null;
-$('addQuantity').onclick = () => {
-  const goal = goals.find(g => g.id === current);
-  if (!goal) return;
-  const todayIndex = goal.dates.indexOf(today());
-  openQuantity(current, todayIndex < 0 ? null : todayIndex);
-};
+$('addQuantity').onclick = () => openQuantity(current, null);
 
 function openQuantity(id, index) {
   if (!canEdit()) return;
@@ -167,7 +158,7 @@ function openQuantity(id, index) {
   if (!goal || goal.trackQuantity === false) return;
   quantityEditing = {id, index};
   $('quantityTitle').textContent = index !== null && goal.trackDates !== false
-    ? (index + 1) + '일차 건수 입력' : '실행 건수 입력';
+    ? (index + 1) + '회차 건수 입력' : '실행 건수 입력';
   $('quantityDate').value = goal.dates[index] || today();
   $('quantityMode').value = 'daily';
   $('quantityValue').max = 1000000000;
@@ -176,13 +167,22 @@ function openQuantity(id, index) {
   $('quantityDialog').showModal();
 }
 
+function quantitySlot(goal, date) {
+  if (quantityEditing.index !== null) return quantityEditing.index;
+  // Within a day, a newly added record follows that day's existing records.
+  const lastOnDate = goal.dates.lastIndexOf(date);
+  const available = goal.dates.findIndex((recorded, index) => !recorded && index > lastOnDate);
+  return available >= 0 ? available : goal.dates.length;
+}
+
 function quantityValues(goal) {
   const date = $('quantityDate').value;
   const value = $('quantityValue').value;
-  const previous = GoalMetrics.previousTotal(goal, date);
+  const slot = quantitySlot(goal, date);
+  const previous = GoalMetrics.previousTotal(goal, date, slot);
   const isCumulative = $('quantityMode').value === 'cumulative';
   const daily = value === '' ? NaN : Number(value) - (isCumulative ? previous : 0);
-  return {date, previous, daily, cumulative: previous + daily};
+  return {date, slot, previous, daily, cumulative: previous + daily};
 }
 
 function updateQuantityPreview() {
@@ -190,18 +190,18 @@ function updateQuantityPreview() {
   if (!goal) return;
   const {date, previous, daily, cumulative} = quantityValues(goal);
   $('quantityPreview').textContent = date && GoalMetrics.validQuantity(daily)
-    ? `당일 ${daily}건 · 누적 ${cumulative}건`
-    : `이 날짜 이전 누적 ${previous}건 · 당일 건수는 0~1,000,000,000건이어야 합니다.`;
+    ? `이번 ${daily}건 · 누적 ${cumulative}건`
+    : `이 기록 이전 누적 ${previous}건 · 이번 건수는 0~1,000,000,000건이어야 합니다.`;
 }
 
 $('quantityMode').addEventListener('change', () => {
   const goal = goals.find(g => g.id === quantityEditing?.id);
   if (!goal) return;
   const date = $('quantityDate').value;
-  const index = quantityEditing.index ?? goal.dates.indexOf(date);
+  const index = quantitySlot(goal, date);
   const daily = GoalMetrics.quantity(goal, index);
   $('quantityValue').value = $('quantityMode').value === 'cumulative'
-    ? GoalMetrics.previousTotal(goal, date) + daily : daily;
+    ? GoalMetrics.previousTotal(goal, date, index) + daily : daily;
   $('quantityValue').max = $('quantityMode').value === 'cumulative' ? 10000000000000 : 1000000000;
   updateQuantityPreview();
 });
@@ -211,23 +211,16 @@ $('quantityDialog').addEventListener('close', () => { quantityEditing = null; })
 $('quantityForm').onsubmit = e => {
   e.preventDefault();
   if (!canEdit() || !quantityEditing) return;
-  const {id, index} = quantityEditing;
+  const {id} = quantityEditing;
   const goal = goals.find(g => g.id === id);
   if (!goal || goal.trackQuantity === false) return;
-  const {date, daily} = quantityValues(goal);
+  const {date, slot, daily} = quantityValues(goal);
   if (!date || !GoalMetrics.validQuantity(daily)) {
-    alert('누적 건수는 이 날짜 이전 누적보다 작을 수 없습니다. 입력한 건수를 확인해 주세요.');
+    alert('누적 건수는 이 기록 이전 누적보다 작을 수 없습니다. 입력한 건수를 확인해 주세요.');
     return;
   }
-  const sameDay = goal.dates.indexOf(date);
-  if (sameDay !== -1 && sameDay !== index) {
-    alert('같은 날짜의 실행 기록이 있습니다. 해당 기록에서 건수를 수정해 주세요.');
-    return;
-  }
-  const empty = goal.dates.indexOf(null);
-  const slot = index ?? (empty >= 0 ? empty : goal.dates.length);
   if (slot >= 10000) {
-    alert('기록은 최대 10,000일까지만 저장할 수 있습니다.');
+    alert('기록은 최대 10,000회까지만 저장할 수 있습니다.');
     return;
   }
   goal.dates[slot] = date;
@@ -274,7 +267,6 @@ $('completionDateForm').onsubmit=e=>{
   if(!input.reportValidity()||!/^\d{4}-\d{2}-\d{2}$/.test(value))return;
   const goal=goals.find(g=>g.id===dateEditing?.id),index=dateEditing?.index;
   if(!goal?.dates[index])return;
-  if(goal.dates.some((d,i)=>i!==index&&d===value)){alert('같은 날짜의 실행 기록이 있습니다. 날짜별로 하나의 실행 기록을 사용해 주세요.');return;}
   goal.dates[index]=value;
   save();
   $('completionDateDialog').close();
