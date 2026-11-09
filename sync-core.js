@@ -4,17 +4,29 @@
   const copy = value => JSON.parse(JSON.stringify(value));
   function toRemote(goal) {
     return {name: goal.name, count: goal.count, start: goal.start, end: goal.end,
-      targetQuantity: goal.targetQuantity || null, quantities: Object.fromEntries(goal.dates.map((_, i) => [String(i), goal.quantities?.[i] || 0])),
+      targetQuantity: goal.targetQuantity || null, ...trackingSettings(goal), quantities: Object.fromEntries(goal.dates.map((_, i) => [String(i), goal.quantities?.[i] || 0])),
       dates: Object.fromEntries(goal.dates.map((date, i) => [String(i), date || null])), deleted: false};
+  }
+  function trackingSettings(goal) {
+    const settings = {};
+    for (const key of ['trackDates', 'trackQuantity']) {
+      if (typeof goal[key] === 'boolean') settings[key] = goal[key];
+    }
+    return settings;
   }
   function toGoal(id, data) {
     if (!data || data.deleted || typeof data.name !== 'string' ||
         !Number.isInteger(data.count) || data.count < 1 || data.count > 10000 ||
         !/^\d{4}-\d{2}-\d{2}$/.test(data.start) || !/^\d{4}-\d{2}-\d{2}$/.test(data.end)) return null;
-    return {id, name: data.name, count: data.count, start: data.start, end: data.end,
+    const length = Object.entries(data.dates || {}).reduce((length, [key, value]) => {
+      const index = Number(key);
+      return value && Number.isInteger(index) && index >= 0 && index < 10000
+        ? Math.max(length, index + 1) : length;
+    }, data.count);
+    return {id, ...trackingSettings(data), name: data.name, count: data.count, start: data.start, end: data.end,
       targetQuantity: Number.isSafeInteger(data.targetQuantity) && data.targetQuantity > 0 && data.targetQuantity <= 1000000000 ? data.targetQuantity : null,
-      quantities: Array.from({length:data.count},(_,i)=>Number.isSafeInteger(data.quantities?.[i]) && data.quantities[i]>=0 && data.quantities[i]<=1000000000 ? data.quantities[i] : 0),
-      dates: Array.from({length: data.count}, (_, i) => {
+      quantities: Array.from({length},(_,i)=>Number.isSafeInteger(data.quantities?.[i]) && data.quantities[i]>=0 && data.quantities[i]<=1000000000 ? data.quantities[i] : 0),
+      dates: Array.from({length}, (_, i) => {
         const value = data.dates?.[i];
         return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
       })};
@@ -27,10 +39,10 @@
       const old = before.get(goal.id);
       if (!old) { operations.push({id: goal.id, patch: toRemote(goal)}); continue; }
       const patch = {};
-      for (const key of ['name', 'count', 'start', 'end', 'targetQuantity']) if ((old[key] ?? null) !== (goal[key] ?? null)) patch[key] = goal[key] ?? null;
+      for (const key of ['name', 'count', 'start', 'end', 'targetQuantity', 'trackDates', 'trackQuantity']) if ((old[key] ?? null) !== (goal[key] ?? null)) patch[key] = goal[key] ?? null;
       const dates = {}, quantities = {};
       // Explicit nulls clear truncated records and prevent them reappearing if count grows.
-      for (let i = 0; i < Math.max(old.count, goal.count); i++) {
+      for (let i = 0; i < Math.max(old.dates.length, goal.dates.length); i++) {
         const a = old.dates[i] || null, b = goal.dates[i] || null;
         if (a !== b) dates[i] = b;
         const qa=old.quantities?.[i] || 0, qb=goal.quantities?.[i] || 0;

@@ -1,5 +1,5 @@
-const CACHE = 'goal-app-v9';
-const ASSETS = ['./', './index.html', './app.js?v=9', './metrics.js?v=9', './sync-core.js?v=9', './sync.js?v=9',
+const CACHE = 'goal-app-v10';
+const ASSETS = ['./', './index.html', './app.js?v=10', './metrics.js?v=10', './sync-core.js?v=10', './sync.js?v=10',
   './firebase-config.js', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', event => event.waitUntil(
   caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting())

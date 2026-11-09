@@ -12,6 +12,10 @@
     return {totalDays,elapsed,completed,total,periodPercent:totalDays?ratio(elapsed,totalDays):(today>=g.start?100:0),datePercent:ratio(completed,g.count),quantityPercent:ratio(total,g.targetQuantity)};
   }
   function cumulative(g,index){const date=g.dates[index];return date?g.dates.reduce((sum,d,i)=>sum+(d&&d<=date?quantity(g,i):0),0):0;}
-  const api={validQuantity,quantity,ratio,stats,cumulative};
+  function previousTotal(goal, date) {
+    return goal.dates.reduce((sum, recorded, index) =>
+      sum + (recorded && recorded < date ? quantity(goal, index) : 0), 0);
+  }
+  const api={validQuantity,quantity,ratio,stats,cumulative,previousTotal};
   if(typeof module!=='undefined')module.exports=api;else root.GoalMetrics=api;
 })(globalThis);
